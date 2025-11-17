@@ -1,0 +1,55 @@
+# ==========================
+# 1. Pastas de Build (Lixo de Compilação)
+# ==========================
+/build/
+/out/
+/bin/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.cmake
+install_manifest.txt
+Makefile
+
+# ==========================
+# 2. Arquivos Compilados (Binários)
+# ==========================
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.ilk
+*.suo
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# ==========================
+# 3. IDE e Editor (Configurações Locais)
+# ==========================
+.vscode/
+.idea/
+*.swp
+
+# ==========================
+# 4. Arquivos de Sistema (Windows/Mac)
+# ==========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==========================
+# 5. ARQUIVOS DE IA (Modelos Gigantes)
+# ==========================
+# Ignora os modelos baixados para não travar o Git
+*.dat
+*.bz2
+# Se quiser ignorar a pasta models inteira, descomente abaixo:
+# models/
+
+# ==========================
+# 6. Dependências (Vcpkg)
+# ==========================
+vcpkg_installed/
