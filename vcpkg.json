@@ -1,0 +1,9 @@
+{
+  "name": "face-id-project",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "opencv",
+    "dlib"
+  ],
+  "builtin-baseline": "501db0f17ef6df184fcdbfbe0f87cde2313b6ab1"
+}
