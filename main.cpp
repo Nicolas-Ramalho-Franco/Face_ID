@@ -1,57 +1,105 @@
 #include <iostream>
 #include <opencv2/opencv.hpp>
+#include <opencv2/face.hpp>
 #include <opencv2/objdetect.hpp>
 #include <opencv2/imgproc.hpp>
 
+using namespace cv;
+using namespace cv::face;
+using namespace std;
+
 int main() {
-    cv::CascadeClassifier face_cascade;
-    
+    // --- 1. CARREGAR O DETECTOR DE ROSTOS (HAAR CASCADE) ---
+    CascadeClassifier face_cascade;
     if (!face_cascade.load("haarcascade_frontalface_default.xml")) {
-        std::cout << "ERRO: XML nao encontrado." << std::endl;
+        cout << "ERRO CRITICO: Arquivo xml nao encontrado na pasta do executavel." << endl;
         return -1;
     }
 
-    cv::VideoCapture cap(0);
+    // --- 2. CARREGAR O CEREBRO TREINADO (LBPH) ---
+    Ptr<LBPHFaceRecognizer> recognizer = LBPHFaceRecognizer::create();
+    try {
+        recognizer->read("treinamento.yml");
+    } catch (cv::Exception& e) {
+        cout << "ERRO CRITICO: Arquivo 'treinamento.yml' nao encontrado." << endl;
+        cout << "Voce rodou o 'treinamento.exe' depois de tirar as fotos?" << endl;
+        return -1;
+    }
+
+    // --- 3. INICIAR CAMERA ---
+    VideoCapture cap(0);
     if (!cap.isOpened()) {
-        std::cout << "Erro na camera" << std::endl;
+        cout << "Erro ao abrir a webcam." << endl;
         return -1;
     }
 
-    cv::Mat frame, frame_gray;
-    
-    std::cout << "Iniciando... diga XXXXXXXXXX!" << std::endl;
+    Mat frame, gray;
+    cout << "Sistema Iniciado! Pressione ESC para sair." << endl;
 
     while (true) {
         cap >> frame;
         if (frame.empty()) break;
 
-        cv::cvtColor(frame, frame_gray, cv::COLOR_BGR2GRAY);
-        cv::equalizeHist(frame_gray, frame_gray);
-
-        std::vector<cv::Rect> faces;
+        // Converter para cinza
+        cvtColor(frame, gray, COLOR_BGR2GRAY);
         
-        // --- MUDANÇA AQUI ---
-        // Mudei minNeighbors de 5 para 3 (fica mais sensível)
-        // ScaleFactor 1.1 (analisa a imagem reduzindo 10% a cada passada)
-        face_cascade.detectMultiScale(frame_gray, faces, 1.2, 5, 0, cv::Size(100, 100));
-
-        // --- DEBUG NO TERMINAL ---
-        // Se achar rosto, escreve no terminal
-        if (faces.size() > 0) {
-            std::cout << "Rostos detectados: " << faces.size() << "\r"; // \r sobrescreve a linha
-        }
+        vector<Rect> faces;
+        
+        // --- AJUSTE ANTI-FALSOS POSITIVOS ---
+        // 1.2 -> ScaleFactor
+        // 8   -> MinNeighbors (Alto para evitar detectar objetos como rostos)
+        // Size(120, 120) -> Tamanho minimo (Ignora coisas pequenas no fundo)
+        face_cascade.detectMultiScale(gray, faces, 1.2, 8, 0, Size(120, 120));
 
         for (size_t i = 0; i < faces.size(); i++) {
-            cv::rectangle(frame, faces[i], cv::Scalar(0, 255, 0), 2);
+            int id = -1;
+            double confidence = 0.0;
             
-            // Adicionei um texto em cima do retângulo
-            cv::putText(frame, "ROSTO", cv::Point(faces[i].x, faces[i].y - 10), 
-                        cv::FONT_HERSHEY_PLAIN, 1.0, cv::Scalar(0, 255, 0), 2);
+            // O computador tenta adivinhar quem é
+            recognizer->predict(gray(faces[i]), id, confidence);
+
+            string nome;
+            Scalar cor;
+
+            // --- CALIBRAGEM DE CONFIANÇA ---
+            // LBPH: Quanto MENOR o numero, MAIS PARECIDO é.
+            // 0 = Identico | 40 = Muito parecido | 80 = Diferente
+            // Tente ajustar esse 60 para mais ou menos conforme o ambiente.
+            int limite_confianca = 60; 
+
+            if (confidence < limite_confianca) {
+                // --- PESSOA CONHECIDA ---
+                cor = Scalar(0, 255, 0); // Verde
+                
+                if (id == 1) {
+                    nome = "NICOLAS";
+                } 
+                else if (id == 2) {
+                    nome = "USUARIO 2"; // Mude aqui para o nome do seu amigo
+                } 
+                else {
+                    nome = "CADASTRO " + to_string(id);
+                }
+                
+            } else {
+                // --- PESSOA DESCONHECIDA ---
+                cor = Scalar(0, 0, 255); // Vermelho
+                nome = "DESCONHECIDO";
+            }
+
+            // Desenha o retângulo
+            rectangle(frame, faces[i], cor, 2);
+
+            // Escreve o nome e a confiança na tela para você monitorar
+            string texto_tela = nome + " (" + to_string((int)confidence) + ")";
+            putText(frame, texto_tela, Point(faces[i].x, faces[i].y - 10), 
+                    FONT_HERSHEY_SIMPLEX, 0.7, cor, 2);
         }
 
-        cv::imshow("Reconhecimento Facial", frame);
+        imshow("Sistema de Reconhecimento", frame);
 
-        if (cv::waitKey(30) == 27) break;
+        // Sai com ESC (código 27)
+        if (waitKey(30) == 27) break;
     }
 
     return 0;

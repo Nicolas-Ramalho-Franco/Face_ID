@@ -2,8 +2,14 @@
   "name": "face-id-project",
   "version-string": "1.0.0",
   "dependencies": [
-    "opencv",
+    {
+      "name": "opencv",
+      "default-features": true,
+      "features": [
+        "contrib"
+      ]
+    },
     "dlib"
   ],
-  "builtin-baseline": "501db0f17ef6df184fcdbfbe0f87cde2313b6ab1"
+  "builtin-baseline": "3bbc2809d3625cb83a0d7cbd413bd6ad769d46d4"
 }
