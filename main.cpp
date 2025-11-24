@@ -1,106 +1,166 @@
-#include <iostream>
 #include <opencv2/opencv.hpp>
 #include <opencv2/face.hpp>
-#include <opencv2/objdetect.hpp>
-#include <opencv2/imgproc.hpp>
+#include <iostream>
+#include <vector>
+#include <map>
 
+using namespace std;
 using namespace cv;
 using namespace cv::face;
-using namespace std;
+
+// Variáveis globais
+Ptr<FaceDetectorYN> detector;
+Ptr<FaceRecognizerSF> recognizer;
+
+// Mapa para guardar ID -> Nome automaticamente
+map<int, string> nomes_conhecidos;
+
+// Função para carregar as fotos e extrair ID e NOME do arquivo
+map<int, Mat> carregarBancoDeDados() {
+    map<int, vector<Mat>> amostras;
+    map<int, Mat> banco_final;
+    vector<String> filenames;
+    
+    cout << "Carregando e lendo nomes da pasta 'dados'..." << endl;
+    glob("dados/*.jpg", filenames, false);
+
+    if (filenames.empty()) {
+        cout << "AVISO: Nenhuma foto encontrada em 'dados'." << endl;
+        return banco_final;
+    }
+
+    for (auto fn : filenames) {
+        // O arquivo agora é: dados\user.1.Joao.5.jpg
+        
+        // 1. Achar onde começa "user."
+        size_t pos_user = fn.find("user.");
+        if (pos_user == string::npos) continue;
+
+        // Pula "user." (5 letras)
+        string resto = fn.substr(pos_user + 5); 
+        // Agora temos: 1.Joao.5.jpg
+
+        // 2. Pegar o ID (pega tudo até o primeiro ponto)
+        size_t primeiro_ponto = resto.find('.');
+        string str_id = resto.substr(0, primeiro_ponto);
+        int id = stoi(str_id);
+
+        // 3. Pegar o NOME (está entre o primeiro e o segundo ponto)
+        string resto_sem_id = resto.substr(primeiro_ponto + 1); // Joao.5.jpg
+        size_t segundo_ponto = resto_sem_id.find('.');
+        string nome_extraido = resto_sem_id.substr(0, segundo_ponto);
+
+        // Salva o nome no mapa global se ainda não salvou
+        if (nomes_conhecidos.find(id) == nomes_conhecidos.end()) {
+            nomes_conhecidos[id] = nome_extraido;
+            cout << "Detectado: ID " << id << " = " << nome_extraido << endl;
+        }
+
+        Mat img = imread(fn);
+        if (img.empty()) continue;
+
+        // Detecta rosto na foto de treino
+        detector->setInputSize(img.size());
+        Mat faces;
+        detector->detect(img, faces);
+
+        if (faces.rows < 1) continue;
+
+        Mat aligned_face, feature;
+        recognizer->alignCrop(img, faces.row(0), aligned_face);
+        recognizer->feature(aligned_face, feature);
+
+        amostras[id].push_back(feature.clone());
+    }
+
+    // Tira média das características
+    for (auto const& [id, features] : amostras) {
+        Mat media = Mat::zeros(features[0].size(), features[0].type());
+        for (auto feature : features) {
+            media += feature;
+        }
+        media /= (double)features.size();
+        banco_final[id] = media;
+    }
+
+    return banco_final;
+}
 
 int main() {
-    // --- 1. CARREGAR O DETECTOR DE ROSTOS (HAAR CASCADE) ---
-    CascadeClassifier face_cascade;
-    if (!face_cascade.load("haarcascade_frontalface_default.xml")) {
-        cout << "ERRO CRITICO: Arquivo xml nao encontrado na pasta do executavel." << endl;
+    // 1. Carregar Modelos ONNX
+    String pathDetector = "face_detection_yunet_2023mar.onnx";
+    String pathRecognizer = "face_recognition_sface_2021dec.onnx";
+
+    detector = FaceDetectorYN::create(pathDetector, "", Size(320, 320), 0.9f, 0.3f, 5000);
+    recognizer = FaceRecognizerSF::create(pathRecognizer, "");
+
+    if (detector.empty() || recognizer.empty()) {
+        cerr << "ERRO: Arquivos ONNX nao encontrados!" << endl;
         return -1;
     }
 
-    // --- 2. CARREGAR O CEREBRO TREINADO (LBPH) ---
-    Ptr<LBPHFaceRecognizer> recognizer = LBPHFaceRecognizer::create();
-    try {
-        recognizer->read("treinamento.yml");
-    } catch (cv::Exception& e) {
-        cout << "ERRO CRITICO: Arquivo 'treinamento.yml' nao encontrado." << endl;
-        cout << "Voce rodou o 'treinamento.exe' depois de tirar as fotos?" << endl;
-        return -1;
-    }
+    // 2. Aprender rostos
+    map<int, Mat> banco_de_dados = carregarBancoDeDados();
 
-    // --- 3. INICIAR CAMERA ---
+    // 3. Iniciar Camera
     VideoCapture cap(0);
-    if (!cap.isOpened()) {
-        cout << "Erro ao abrir a webcam." << endl;
-        return -1;
-    }
+    if (!cap.isOpened()) return -1;
 
-    Mat frame, gray;
-    cout << "Sistema Iniciado! Pressione ESC para sair." << endl;
+    Mat frame;
+    cout << "--- SISTEMA INICIADO ---" << endl;
 
     while (true) {
         cap >> frame;
         if (frame.empty()) break;
 
-        // Converter para cinza
-        cvtColor(frame, gray, COLOR_BGR2GRAY);
-        
-        vector<Rect> faces;
-        
-        // --- AJUSTE ANTI-FALSOS POSITIVOS ---
-        // 1.2 -> ScaleFactor
-        // 8   -> MinNeighbors (Alto para evitar detectar objetos como rostos)
-        // Size(120, 120) -> Tamanho minimo (Ignora coisas pequenas no fundo)
-        face_cascade.detectMultiScale(gray, faces, 1.2, 8, 0, Size(120, 120));
+        detector->setInputSize(frame.size());
+        Mat faces;
+        detector->detect(frame, faces);
 
-        for (size_t i = 0; i < faces.size(); i++) {
-            int id = -1;
-            double confidence = 0.0;
-            
-            // O computador tenta adivinhar quem é
-            recognizer->predict(gray(faces[i]), id, confidence);
+        for (int i = 0; i < faces.rows; i++) {
+            int x = (int)faces.at<float>(i, 0);
+            int y = (int)faces.at<float>(i, 1);
+            int w = (int)faces.at<float>(i, 2);
+            int h = (int)faces.at<float>(i, 3);
 
-            string nome;
-            Scalar cor;
+            Mat aligned_face, feature;
+            recognizer->alignCrop(frame, faces.row(i), aligned_face);
+            recognizer->feature(aligned_face, feature);
 
-            // --- CALIBRAGEM DE CONFIANÇA ---
-            // LBPH: Quanto MENOR o numero, MAIS PARECIDO é.
-            // 0 = Identico | 40 = Muito parecido | 80 = Diferente
-            // Tente ajustar esse 60 para mais ou menos conforme o ambiente.
-            int limite_confianca = 60; 
+            int id_encontrado = -1;
+            double maior_score = 0.0;
 
-            if (confidence < limite_confianca) {
-                // --- PESSOA CONHECIDA ---
-                cor = Scalar(0, 255, 0); // Verde
-                
-                if (id == 1) {
-                    nome = "NICOLAS";
-                } 
-                else if (id == 2) {
-                    nome = "USUARIO 2"; // Mude aqui para o nome do seu amigo
-                } 
-                else {
-                    nome = "CADASTRO " + to_string(id);
+            for (auto const& [id, feat_db] : banco_de_dados) {
+                double score = recognizer->match(feature, feat_db, FaceRecognizerSF::FR_COSINE);
+                if (score > maior_score) {
+                    maior_score = score;
+                    id_encontrado = id;
                 }
-                
-            } else {
-                // --- PESSOA DESCONHECIDA ---
-                cor = Scalar(0, 0, 255); // Vermelho
-                nome = "DESCONHECIDO";
             }
 
-            // Desenha o retângulo
-            rectangle(frame, faces[i], cor, 2);
+            Scalar cor = Scalar(0, 0, 255); 
+            string nome_display = "DESCONHECIDO";
 
-            // Escreve o nome e a confiança na tela para você monitorar
-            string texto_tela = nome + " (" + to_string((int)confidence) + ")";
-            putText(frame, texto_tela, Point(faces[i].x, faces[i].y - 10), 
-                    FONT_HERSHEY_SIMPLEX, 0.7, cor, 2);
+            // Se a confiança for boa
+            if (maior_score > 0.4) {
+                cor = Scalar(0, 255, 0); 
+                
+                // Busca o nome que lemos automaticamente dos arquivos
+                if (nomes_conhecidos.count(id_encontrado)) {
+                    nome_display = nomes_conhecidos[id_encontrado];
+                } else {
+                    nome_display = "ID " + to_string(id_encontrado);
+                }
+            }
+
+            rectangle(frame, Rect(x, y, w, h), cor, 2);
+            
+            string texto = nome_display + " (" + to_string((int)(maior_score * 100)) + "%)";
+            putText(frame, texto, Point(x, y - 10), FONT_HERSHEY_SIMPLEX, 0.6, cor, 2);
         }
 
-        imshow("Sistema de Reconhecimento", frame);
-
-        // Sai com ESC (código 27)
-        if (waitKey(30) == 27) break;
+        imshow("OpenCV DNN Face ID", frame);
+        if (waitKey(1) == 27) break;
     }
-
     return 0;
 }

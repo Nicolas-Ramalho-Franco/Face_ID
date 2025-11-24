@@ -35,6 +35,6 @@ target_include_directories(coletor PRIVATE
 
 target_link_libraries(coletor PRIVATE dlib::dlib ${OpenCV_LIBS})
 # --- PROGRAMA 3: O Treinador ---
-add_executable(treinamento treinamento.cpp)
-target_include_directories(treinamento PRIVATE ${OpenCV_INCLUDE_DIRS} ${DLIB_INCLUDE_DIRS})
-target_link_libraries(treinamento PRIVATE dlib::dlib ${OpenCV_LIBS})
+#add_executable(treinamento treinamento.cpp)
+#target_include_directories(treinamento PRIVATE ${OpenCV_INCLUDE_DIRS} ${DLIB_INCLUDE_DIRS})
+#target_link_libraries(treinamento PRIVATE dlib::dlib ${OpenCV_LIBS})

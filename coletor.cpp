@@ -9,18 +9,15 @@ using namespace cv;
 using namespace std;
 
 int main() {
-    // --- CONFIGURAÇÃO ---
-    // Se quiser usar um arquivo de video gravado no celular, coloque o nome dele aqui:
-    // Exemplo: VideoCapture cap("meu_video.mp4");
-    // Se for webcam, deixe 0.
     VideoCapture cap(0); 
 
     if (!cap.isOpened()) {
-        cout << "Erro ao abrir camera ou arquivo de video!" << endl;
+        cout << "Erro ao abrir camera!" << endl;
         return -1;
     }
 
     CascadeClassifier face_cascade;
+    // Certifique-se que este arquivo xml esta na pasta do executavel
     if (!face_cascade.load("haarcascade_frontalface_default.xml")) {
         cout << "ERRO: XML nao encontrado." << endl;
         return -1;
@@ -30,17 +27,18 @@ int main() {
     Mat frame, gray;
     int count = 0;
     int id;
-    int max_fotos = 80; // Define quantas fotos quer pegar (50 é um bom número)
+    string nome;
+    int max_fotos = 50; 
 
-    cout << "Digite o numero do ID para cadastro: ";
+    cout << "Digite o numero do ID (ex: 1): ";
     cin >> id;
+
+    cout << "Digite o NOME da pessoa (Sem espacos, ex: Joao): ";
+    cin >> nome;
     
     cout << "--- ATENCAO ---" << endl;
-    cout << "A captura sera RAPIDA (tipo video)." << endl;
-    cout << "Assim que a camera abrir, MEXA A CABECA devagar (lados, cima, baixo)." << endl;
+    cout << "Olhe para a camera e mexa a cabeca levemente." << endl;
     cout << "Pressione qualquer tecla para comecar..." << endl;
-    
-    // Pausa para você se preparar antes de começar
     system("pause"); 
 
     while (true) {
@@ -50,20 +48,20 @@ int main() {
         cvtColor(frame, gray, COLOR_BGR2GRAY);
         vector<Rect> faces;
         
-        // Detecção ajustada
         face_cascade.detectMultiScale(gray, faces, 1.2, 5, 0, Size(100, 100));
 
         for (auto& face : faces) {
-            // Só salva se o rosto não estiver muito na borda (evita cortes)
+            // Evita fotos muito na borda
             if (face.x < 10 || face.y < 10 || (face.x + face.width) > frame.cols - 10) continue;
 
             count++;
             
-            // Salva a foto
-            string nome_arquivo = "dados/user." + to_string(id) + "." + to_string(count) + ".jpg";
+            // --- AQUI ESTA A MUDANCA ---
+            // Formato: user.ID.NOME.FOTO.jpg
+            string nome_arquivo = "dados/user." + to_string(id) + "." + nome + "." + to_string(count) + ".jpg";
+            
             imwrite(nome_arquivo, gray(face));
 
-            // Desenha na tela visualmente
             rectangle(frame, face, Scalar(0, 255, 0), 2);
             putText(frame, to_string(count) + "/" + to_string(max_fotos), 
                     Point(face.x, face.y-10), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(0,255,0), 2);
@@ -71,11 +69,9 @@ int main() {
 
         imshow("Captura Rapida", frame);
 
-        // AQUI ESTÁ O SEGREDO: waitKey(1) é apenas 1 milissegundo.
-        // Ele não espera nada, processa o mais rápido que o PC aguentar.
         if (waitKey(1) == 27 || count >= max_fotos) break;
     }
     
-    cout << "Pronto! " << count << " frames capturados." << endl;
+    cout << "Pronto! Fotos salvas para o usuario: " << nome << endl;
     return 0;
 }
